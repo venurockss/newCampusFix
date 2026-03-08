@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../context/ThemeContext';
+import api from '../../api/client';
 
 const AssignIssuesScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -20,110 +21,60 @@ const AssignIssuesScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [issues, setIssues] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
 
-  // Mock data for issues
-  const mockIssues = [
-    {
-      id: '1',
-      title: 'Server Room Temperature Critical',
-      category: 'Technology',
-      status: 'Pending',
-      priority: 'Critical',
-      reportedBy: 'John Doe',
-      assignedTo: null,
-      date: '2024-01-18 10:30',
-      location: 'IT Building - Server Room',
-      description: 'Temperature in server room is above normal levels, need immediate attention.',
-      estimatedTime: '2-3 hours',
-    },
-    {
-      id: '2',
-      title: 'Security Camera Offline',
-      category: 'Security',
-      status: 'Pending',
-      priority: 'High',
-      reportedBy: 'Sarah Smith',
-      assignedTo: null,
-      date: '2024-01-18 09:15',
-      location: 'Main Gate - Camera 3',
-      description: 'Security camera at main gate entrance is not functioning properly.',
-      estimatedTime: '1-2 hours',
-    },
-    {
-      id: '3',
-      title: 'Water Leak in Chemistry Lab',
-      category: 'Facility',
-      status: 'Pending',
-      priority: 'High',
-      reportedBy: 'Dr. Johnson',
-      assignedTo: null,
-      date: '2024-01-18 08:45',
-      location: 'Science Building - Lab 205',
-      description: 'Water leak detected near the sink area, potential safety hazard.',
-      estimatedTime: '3-4 hours',
-    },
-    {
-      id: '4',
-      title: 'Broken Window in Library',
-      category: 'Facility',
-      status: 'Pending',
-      priority: 'Medium',
-      reportedBy: 'Lisa Chen',
-      assignedTo: null,
-      date: '2024-01-18 07:30',
-      location: 'Library - Reading Room 2',
-      description: 'Large crack in the window, needs replacement.',
-      estimatedTime: '4-6 hours',
-    },
-  ];
-
-  // Mock data for technicians
-  const mockTechnicians = [
-    {
-      id: '1',
-      name: 'Mike Wilson',
-      specialization: 'Technology',
-      currentLoad: 3,
-      rating: 4.8,
-      available: true,
-      avatar: '👨‍💻',
-    },
-    {
-      id: '2',
-      name: 'Tom Brown',
-      specialization: 'Facility',
-      currentLoad: 2,
-      rating: 4.6,
-      available: true,
-      avatar: '👷‍♂️',
-    },
-    {
-      id: '3',
-      name: 'Alex Johnson',
-      specialization: 'Security',
-      currentLoad: 1,
-      rating: 4.9,
-      available: true,
-      avatar: '👮‍♂️',
-    },
-    {
-      id: '4',
-      name: 'Sam Davis',
-      specialization: 'General',
-      currentLoad: 4,
-      rating: 4.4,
-      available: false,
-      avatar: '👨‍🔧',
-    },
-  ];
+  // Data will be loaded from backend
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = () => {
-    setIssues(mockIssues);
-    setTechnicians(mockTechnicians);
+    (async () => {
+      try {
+        const issuesRes = await api.get('/api/v1/issues/all?limit=100');
+        const issuesData = issuesRes.data || [];
+        const mappedIssues = issuesData.map(i => ({
+          id: i.issue_id || i.id,
+          title: i.title,
+          category: i.category || 'General',
+          status: formatStatus(i.status || ''),
+          priority: i.priority || 'Medium',
+          reportedBy: i.reporter_id || i.reporter || '',
+          assignedTo: i.assigned_to || null,
+          date: i.created_at || i.date,
+          location: i.location || '',
+          description: i.description || '',
+          estimatedTime: i.estimated_time || '',
+          timeline: i.timeline || [],
+          comments: i.comments || []
+        }));
+
+        // get users and filter technicians
+        const usersRes = await api.get('/api/v1/admin/users?limit=100');
+        const usersData = usersRes.data || [];
+        const techs = usersData.filter(u => (u.role || '').toLowerCase() === 'technician').map(t => ({
+          id: t.user_id || t.userId || t.id,
+          name: t.full_name || t.name || t.email,
+          specialization: t.specialization || 'General',
+          currentLoad: 0,
+          rating: t.rating || 0,
+          available: true,
+          avatar: '👷'
+        }));
+
+        setIssues(mappedIssues);
+        setTechnicians(techs);
+      } catch (err) {
+        console.warn('Error loading assign issues data', err?.message || err);
+        setIssues([]);
+        setTechnicians([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -186,30 +137,39 @@ const AssignIssuesScreen = ({ navigation }) => {
         { 
           text: 'Assign', 
           onPress: async () => {
-            try {
-              // Simulate API call
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              // Update the issue
-              const updatedIssues = issues.map(i => 
-                i.id === issue.id 
-                  ? { ...i, assignedTo: technician.name, status: 'In Progress' }
-                  : i
-              );
-              setIssues(updatedIssues);
-              
-              // Update technician load
-              const updatedTechnicians = technicians.map(t =>
-                t.id === technician.id
-                  ? { ...t, currentLoad: t.currentLoad + 1 }
-                  : t
-              );
-              setTechnicians(updatedTechnicians);
-              
-              Alert.alert('Success', `Issue assigned to ${technician.name}`);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to assign issue. Please try again.');
-            }
+              try {
+                // Call backend to create assignment
+                await api.post(`/api/v1/technician/assign/${issue.id}`, null, { params: { technician_id: technician.id } });
+
+                // Update issue document to set assigned_to and status
+                try {
+                  await api.put(`/api/v1/issues/${issue.id}`, { assigned_to: technician.id, status: 'in_progress' });
+                } catch (err) {
+                  // log but continue — assignment exists even if issue update failed
+                  console.warn('Failed to update issue assigned_to', err?.message || err);
+                }
+
+                // Update local UI state
+                const updatedIssues = issues.map(i => 
+                  i.id === issue.id 
+                    ? { ...i, assignedTo: technician.name, status: 'In Progress' }
+                    : i
+                );
+                setIssues(updatedIssues);
+
+                // Update technician load
+                const updatedTechnicians = technicians.map(t =>
+                  t.id === technician.id
+                    ? { ...t, currentLoad: t.currentLoad + 1 }
+                    : t
+                );
+                setTechnicians(updatedTechnicians);
+
+                Alert.alert('Success', `Issue assigned to ${technician.name}`);
+              } catch (error) {
+                console.warn('Assign API error', error?.message || error);
+                Alert.alert('Error', 'Failed to assign issue. Please try again.');
+              }
           }
         },
       ]

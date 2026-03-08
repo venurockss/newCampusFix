@@ -18,11 +18,11 @@ const ProfileScreen = ({ navigation }) => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoLocationEnabled, setAutoLocationEnabled] = useState(false);
 
-  const userData = user || {
-    name: 'User',
-    email: 'user@example.com',
-    role: 'student',
-  };
+  const userData = {
+  name: user?.name || 'User',
+  email: user?.email || 'user@example.com',
+  role: user?.role || 'student',
+};
 
   const handleLogout = () => {
     Alert.alert(

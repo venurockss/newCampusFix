@@ -13,6 +13,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import api from '../api/client';
 
 const EditIssueScreen = ({ navigation, route }) => {
   const { user } = useAuth();
@@ -31,19 +32,20 @@ const EditIssueScreen = ({ navigation, route }) => {
   const [hasChanges, setHasChanges] = useState(false);
 
   const categories = [
-    'Facility',
-    'Technology',
-    'Security',
-    'Maintenance',
-    'Cleaning',
-    'Other'
+    { value: 'water', label: 'Water' },
+    { value: 'electricity', label: 'Electricity' },
+    { value: 'sanitation', label: 'Sanitation' },
+    { value: 'infrastructure', label: 'Infrastructure' },
+    { value: 'safety', label: 'Safety' },
+    { value: 'maintenance', label: 'Maintenance' },
+    { value: 'other', label: 'Other' }
   ];
 
   const priorities = [
-    'Low',
-    'Medium',
-    'High',
-    'Critical'
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'critical', label: 'Critical' }
   ];
 
   useEffect(() => {
@@ -91,26 +93,39 @@ const EditIssueScreen = ({ navigation, route }) => {
 
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      const id = issue.id || issue.issue_id;
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        category: formData.category, // should be enum value like 'maintenance'
+        priority: formData.priority // enum value like 'medium'
+      };
+
+      const res = await api.put(`/api/v1/issues/${encodeURIComponent(id)}`, payload);
+      const updated = res.data;
+
+      const updatedIssue = {
+        ...issue,
+        ...updated,
+        status: formatStatus(updated.status),
+        category: updated.category,
+        priority: updated.priority,
+        title: updated.title,
+        description: updated.description,
+        location: updated.location,
+        date: updated.created_at || issue.date
+      };
+
       Alert.alert(
         'Success',
         'Issue updated successfully!',
         [
-          {
-            text: 'OK',
-            onPress: () => {
-              // In a real app, you would update the issue in the backend
-              // and then navigate back with the updated data
-              navigation.navigate('IssueDetail', { 
-                issue: { ...issue, ...formData } 
-              });
-            },
-          },
+          { text: 'OK', onPress: () => navigation.navigate('MainApp', { screen: 'Issues' }) }
         ]
       );
     } catch (error) {
+      console.warn('Update issue error', error?.response?.data || error?.message || error);
       Alert.alert('Error', 'Failed to update issue. Please try again.');
     } finally {
       setIsLoading(false);
@@ -162,27 +177,32 @@ const EditIssueScreen = ({ navigation, route }) => {
       <View style={styles.pickerContainer}>
         {options.map((option) => (
           <TouchableOpacity
-            key={option}
+            key={option.value}
             style={[
               styles.pickerOption,
               { 
-                backgroundColor: value === option ? colors.primary : colors.surfaceVariant,
+                backgroundColor: value === option.value ? colors.primary : colors.surfaceVariant,
                 borderColor: colors.border
               }
             ]}
-            onPress={() => onValueChange(option)}
+            onPress={() => onValueChange(option.value)}
           >
             <Text style={[
               styles.pickerOptionText,
-              { color: value === option ? '#fff' : colors.text }
+              { color: value === option.value ? '#fff' : colors.text }
             ]}>
-              {option}
+              {option.label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
     </View>
   );
+
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
 
   return (
     <KeyboardAvoidingView

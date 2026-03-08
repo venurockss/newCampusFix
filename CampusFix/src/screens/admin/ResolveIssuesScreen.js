@@ -13,14 +13,20 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../context/ThemeContext';
+import api from '../../api/client';
 
 const ResolveIssuesScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('in-progress');
+  const [selectedFilter, setSelectedFilter] = useState('all');
   const [issues, setIssues] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState(null);
+  
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
   const [resolutionModal, setResolutionModal] = useState(false);
   const [resolutionData, setResolutionData] = useState({
     status: 'Resolved',
@@ -29,93 +35,38 @@ const ResolveIssuesScreen = ({ navigation }) => {
     technicianNotes: '',
   });
 
-  // Mock data for issues
-  const mockIssues = [
-    {
-      id: '1',
-      title: 'Server Room Temperature Critical',
-      category: 'Technology',
-      status: 'In Progress',
-      priority: 'Critical',
-      reportedBy: 'John Doe',
-      assignedTo: 'Mike Wilson',
-      date: '2024-01-18 10:30',
-      location: 'IT Building - Server Room',
-      description: 'Temperature in server room is above normal levels, need immediate attention.',
-      estimatedTime: '2-3 hours',
-      startTime: '2024-01-18 11:00',
-      technicianNotes: 'Investigating HVAC system, found blocked air filter.',
-    },
-    {
-      id: '2',
-      title: 'Security Camera Offline',
-      category: 'Security',
-      status: 'In Progress',
-      priority: 'High',
-      reportedBy: 'Sarah Smith',
-      assignedTo: 'Alex Johnson',
-      date: '2024-01-18 09:15',
-      location: 'Main Gate - Camera 3',
-      description: 'Security camera at main gate entrance is not functioning properly.',
-      estimatedTime: '1-2 hours',
-      startTime: '2024-01-18 09:45',
-      technicianNotes: 'Replaced faulty power supply, testing connection.',
-    },
-    {
-      id: '3',
-      title: 'Water Leak in Chemistry Lab',
-      category: 'Facility',
-      status: 'In Progress',
-      priority: 'High',
-      reportedBy: 'Dr. Johnson',
-      assignedTo: 'Tom Brown',
-      date: '2024-01-18 08:45',
-      location: 'Science Building - Lab 205',
-      description: 'Water leak detected near the sink area, potential safety hazard.',
-      estimatedTime: '3-4 hours',
-      startTime: '2024-01-18 09:00',
-      technicianNotes: 'Fixed pipe connection, checking for additional leaks.',
-    },
-    {
-      id: '4',
-      title: 'Broken Window in Library',
-      category: 'Facility',
-      status: 'Pending Review',
-      priority: 'Medium',
-      reportedBy: 'Lisa Chen',
-      assignedTo: 'Sam Davis',
-      date: '2024-01-18 07:30',
-      location: 'Library - Reading Room 2',
-      description: 'Large crack in the window, needs replacement.',
-      estimatedTime: '4-6 hours',
-      startTime: '2024-01-18 08:00',
-      technicianNotes: 'Window replaced, cleanup completed.',
-    },
-    {
-      id: '5',
-      title: 'Network Connectivity Issues',
-      category: 'Technology',
-      status: 'Resolved',
-      priority: 'Medium',
-      reportedBy: 'Mark Wilson',
-      assignedTo: 'Mike Wilson',
-      date: '2024-01-17 14:20',
-      location: 'Engineering Building - Lab 101',
-      description: 'Intermittent network connectivity in computer lab.',
-      estimatedTime: '2-3 hours',
-      startTime: '2024-01-17 15:00',
-      resolutionTime: '2024-01-17 17:30',
-      technicianNotes: 'Replaced faulty network switch, all connections restored.',
-      resolutionNotes: 'Network switch was malfunctioning due to power surge. Replaced with new unit and tested all connections.',
-    },
-  ];
+  // Issues will be loaded from backend
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = () => {
-    setIssues(mockIssues);
+    (async () => {
+      try {
+        const res = await api.get('/api/v1/issues/all?limit=100');
+        const data = res.data || [];
+        const mapped = data.map(i => ({
+          id: i.issue_id || i.id,
+          title: i.title,
+          category: i.category || 'General',
+          status: formatStatus(i.status || ''),
+          priority: i.priority || 'Medium',
+          reportedBy: i.reporter_id || i.reporter || '',
+          assignedTo: i.assigned_to || i.assignedTo || 'Unassigned',
+          date: i.created_at || i.date,
+          location: i.location || '',
+          description: i.description || '',
+          estimatedTime: i.estimated_time || '',
+          timeline: i.timeline || [],
+          comments: i.comments || []
+        }));
+        setIssues(mapped);
+      } catch (err) {
+        console.warn('Error loading issues', err?.message || err);
+        setIssues([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -178,9 +129,8 @@ const ResolveIssuesScreen = ({ navigation }) => {
                          issue.location.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesFilter = selectedFilter === 'all' || 
-                         (selectedFilter === 'in-progress' && issue.status === 'In Progress') ||
-                         (selectedFilter === 'pending-review' && issue.status === 'Pending Review') ||
-                         (selectedFilter === 'resolved' && issue.status === 'Resolved');
+               (selectedFilter === 'pending-review' && issue.status === 'Pending Review') ||
+               (selectedFilter === 'resolved' && issue.status === 'Resolved');
     
     return matchesSearch && matchesFilter;
   });
@@ -432,10 +382,9 @@ const ResolveIssuesScreen = ({ navigation }) => {
 
         {/* Filter Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs}>
-          {renderFilterTab('all', 'All Issues', '📋')}
-          {renderFilterTab('in-progress', 'In Progress', '🔄')}
-          {renderFilterTab('pending-review', 'Pending Review', '📋')}
-          {renderFilterTab('resolved', 'Resolved', '✅')}
+            {renderFilterTab('all', 'All Issues', '📋')}
+            {renderFilterTab('pending-review', 'Pending Review', '📋')}
+            {renderFilterTab('resolved', 'Resolved', '✅')}
         </ScrollView>
 
         {/* Issues List */}
@@ -443,7 +392,6 @@ const ResolveIssuesScreen = ({ navigation }) => {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               {selectedFilter === 'all' ? 'All Issues' : 
-               selectedFilter === 'in-progress' ? 'In Progress Issues' : 
                selectedFilter === 'pending-review' ? 'Pending Review Issues' : 'Resolved Issues'}
             </Text>
             <Text style={[styles.issueCount, { color: colors.textSecondary }]}>

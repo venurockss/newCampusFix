@@ -24,7 +24,8 @@
     "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "baseline-browser-mapping": "^2.9.11"
   },
   "private": true
 }

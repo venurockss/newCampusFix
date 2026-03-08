@@ -11,6 +11,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import api from '../api/client';
 
 const HomeDashboardScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -30,96 +31,57 @@ const HomeDashboardScreen = ({ navigation }) => {
     role: 'student',
   };
 
-  // Mock data - replace with actual API calls
-  const mockStats = {
-    student: { total: 12, resolved: 8, pending: 3, inProgress: 1 },
-    faculty: { total: 25, resolved: 18, pending: 5, inProgress: 2 },
-    admin: { total: 156, resolved: 142, pending: 8, inProgress: 6 },
-  };
-
-  const mockRecentIssues = {
-    student: [
-      {
-        id: '1',
-        title: 'Broken Chair in Library',
-        category: 'Facility',
-        status: 'Resolved',
-        date: '2024-01-15',
-        priority: 'Medium',
-      },
-      {
-        id: '2',
-        title: 'WiFi Connection Issues',
-        category: 'Technology',
-        status: 'In Progress',
-        date: '2024-01-14',
-        priority: 'High',
-      },
-      {
-        id: '3',
-        title: 'Water Leak in Lab',
-        category: 'Facility',
-        status: 'Pending',
-        date: '2024-01-13',
-        priority: 'High',
-      },
-    ],
-    faculty: [
-      {
-        id: '1',
-        title: 'Projector Not Working',
-        category: 'Technology',
-        status: 'Resolved',
-        date: '2024-01-15',
-        priority: 'High',
-      },
-      {
-        id: '2',
-        title: 'Air Conditioning Issue',
-        category: 'Facility',
-        status: 'In Progress',
-        date: '2024-01-14',
-        priority: 'Medium',
-      },
-    ],
-    admin: [
-      {
-        id: '1',
-        title: 'Security Camera Maintenance',
-        category: 'Security',
-        status: 'Resolved',
-        date: '2024-01-15',
-        priority: 'High',
-      },
-      {
-        id: '2',
-        title: 'Server Room Temperature',
-        category: 'Technology',
-        status: 'In Progress',
-        date: '2024-01-14',
-        priority: 'Critical',
-      },
-    ],
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = () => {
-    // Simulate API call
-    const roleStats = mockStats[userData.role] || mockStats.student;
-    const roleIssues = mockRecentIssues[userData.role] || mockRecentIssues.student;
-    
-    setStats(roleStats || { total: 0, resolved: 0, pending: 0, inProgress: 0 });
-    setRecentIssues(roleIssues || []);
+  const loadDashboardData = async () => {
+    try {
+      // Fetch status counts / analytics
+      const statusRes = await api.get('/api/v1/analytics/issues/by-status');
+      const statusData = statusRes.data || {};
+
+      const total = Object.values(statusData).reduce((s, v) => s + (Number(v) || 0), 0);
+      const inProgress = statusData.in_progress || statusData['in_progress'] || statusData.inProgress || 0;
+      const resolved = statusData.resolved || statusData['resolved'] || 0;
+      const pending = statusData.pending || statusData['pending'] || 0;
+
+      setStats({ total, resolved, pending, inProgress });
+
+      // Fetch recent issues
+      const issuesRes = await api.get('/api/v1/issues/all?limit=5');
+      const issuesData = issuesRes.data || [];
+      const mapped = issuesData.map(i => ({
+        id: i.issue_id || i.id,
+        title: i.title,
+        category: i.category || 'General',
+        status: formatStatus(i.status || ''),
+        date: i.created_at || i.date,
+        priority: i.priority || 'Medium',
+        location: i.location || '',
+        description: i.description || '',
+        assignedTo: i.assigned_to || i.assignedTo || '',
+        eta: i.eta || '',
+        timeline: i.timeline || [],
+        comments: i.comments || []
+      }));
+
+      setRecentIssues(mapped);
+    } catch (err) {
+      console.warn('Error loading dashboard data', err?.message || err);
+      setStats({ total: 0, resolved: 0, pending: 0, inProgress: 0 });
+      setRecentIssues([]);
+    }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate API refresh
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    loadDashboardData();
+    await loadDashboardData();
     setRefreshing(false);
   };
 

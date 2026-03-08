@@ -22,6 +22,7 @@ import EditIssueScreen from '../screens/EditIssueScreen';
 // Admin & Technician Screens
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import TechnicianDashboardScreen from '../screens/technician/TechnicianDashboardScreen';
+import TechnicianProfileScreen from '../screens/technician/TechnicianProfileScreen';
 
 // User Management Screens
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -188,7 +189,7 @@ const TechnicianTabNavigator = () => {
       />
       <Tab.Screen 
         name="Profile" 
-        component={ProfileScreen}
+        component={TechnicianProfileScreen}
         options={{
           tabBarIcon: ({ color }) => (
             <Text style={{ color, fontSize: 20 }}>👤</Text>

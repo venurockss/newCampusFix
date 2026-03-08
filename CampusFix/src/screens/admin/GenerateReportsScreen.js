@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../context/ThemeContext';
+import api from '../../api/client';
 
 const GenerateReportsScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -17,54 +18,38 @@ const GenerateReportsScreen = ({ navigation }) => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportData, setReportData] = useState(null);
 
-  // Mock report data
-  const mockReportData = {
-    issuesByCategory: {
-      'Technology': 45,
-      'Facility': 32,
-      'Security': 18,
-      'Maintenance': 25,
-      'Cleaning': 12,
-    },
-    issuesByStatus: {
-      'Pending': 23,
-      'In Progress': 15,
-      'Resolved': 89,
-      'Closed': 12,
-    },
-    resolutionTime: {
-      '0-24 hours': 45,
-      '1-3 days': 32,
-      '3-7 days': 18,
-      '1+ weeks': 8,
-    },
-    monthlyTrends: {
-      'Jan': 45,
-      'Feb': 52,
-      'Mar': 38,
-      'Apr': 61,
-      'May': 47,
-      'Jun': 55,
-    },
-    topReporters: [
-      { name: 'John Doe', count: 12, role: 'Student' },
-      { name: 'Sarah Smith', count: 8, role: 'Faculty' },
-      { name: 'Mike Wilson', count: 6, role: 'Student' },
-      { name: 'Dr. Johnson', count: 5, role: 'Faculty' },
-    ],
-    technicianPerformance: [
-      { name: 'Alex Johnson', resolved: 45, rating: 4.9, avgTime: '2.1 days' },
-      { name: 'Tom Brown', resolved: 38, rating: 4.6, avgTime: '2.8 days' },
-      { name: 'Sam Davis', resolved: 32, rating: 4.4, avgTime: '3.2 days' },
-    ],
-  };
+  // Report data will be loaded from backend analytics endpoints
 
   useEffect(() => {
     loadReportData();
   }, []);
 
   const loadReportData = () => {
-    setReportData(mockReportData);
+    (async () => {
+      try {
+        const byCategoryRes = await api.get('/api/v1/analytics/issues/by-category');
+        const byStatusRes = await api.get('/api/v1/analytics/issues/by-status');
+        const dashboardRes = await api.get('/api/v1/analytics/dashboard');
+
+        const issuesByCategory = byCategoryRes.data || {};
+        const issuesByStatus = byStatusRes.data || {};
+        const dashboard = dashboardRes.data || {};
+
+        const reportObj = {
+          issuesByCategory,
+          issuesByStatus,
+          resolutionTime: dashboard.resolution_time || {},
+          monthlyTrends: dashboard.monthly_trends || {},
+          topReporters: dashboard.top_reporters || [],
+          technicianPerformance: dashboard.technician_performance || []
+        };
+
+        setReportData(reportObj);
+      } catch (err) {
+        console.warn('Error loading report data', err?.message || err);
+        setReportData(null);
+      }
+    })();
   };
 
   const onRefresh = async () => {

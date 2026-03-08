@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../api/client';
 
 const AdminDashboardScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -31,60 +32,61 @@ const AdminDashboardScreen = ({ navigation }) => {
     role: 'admin',
   };
 
-  // Mock data for admin dashboard
-  const mockStats = {
-    totalIssues: 156,
-    pendingIssues: 23,
-    resolvedToday: 8,
-    highPriority: 12,
-    avgResolutionTime: 2.4,
-    userSatisfaction: 4.2,
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
-  const mockRecentIssues = [
-    {
-      id: '1',
-      title: 'Server Room Temperature Critical',
-      category: 'Technology',
-      status: 'In Progress',
-      priority: 'Critical',
-      reportedBy: 'John Doe',
-      assignedTo: 'Mike Wilson',
-      date: '2024-01-18 10:30',
-      location: 'IT Building - Server Room',
-    },
-    {
-      id: '2',
-      title: 'Security Camera Offline',
-      category: 'Security',
-      status: 'Pending',
-      priority: 'High',
-      reportedBy: 'Sarah Smith',
-      assignedTo: 'Unassigned',
-      date: '2024-01-18 09:15',
-      location: 'Main Gate - Camera 3',
-    },
-    {
-      id: '3',
-      title: 'Water Leak in Chemistry Lab',
-      category: 'Facility',
-      status: 'Resolved',
-      priority: 'High',
-      reportedBy: 'Dr. Johnson',
-      assignedTo: 'Tom Brown',
-      date: '2024-01-18 08:45',
-      location: 'Science Building - Lab 205',
-    },
-  ];
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
   const loadDashboardData = () => {
-    // Simulate API call
-    setStats(mockStats);
-    setRecentIssues(mockRecentIssues);
+    (async () => {
+      try {
+        const res = await api.get('/api/v1/admin/dashboard');
+        const data = res.data || {};
+        setStats({
+          totalIssues: data.total_issues || 0,
+          pendingIssues: data.pending_issues || 0,
+          resolvedToday: data.resolved_issues || 0,
+          highPriority: data.high_priority || 0,
+          avgResolutionTime: data.avg_resolution_time || 0,
+          userSatisfaction: data.user_satisfaction || 0,
+        });
+
+        const issuesRes = await api.get('/api/v1/issues/all?limit=5');
+        const issuesData = issuesRes.data || [];
+        const mapped = issuesData.map(i => ({
+          id: i.issue_id || i.id,
+          title: i.title,
+          category: i.category || 'General',
+          status: formatStatus(i.status || ''),
+          priority: i.priority || 'Medium',
+          reportedBy: i.reporter_id || i.reporter || '',
+          assignedTo: i.assigned_to || i.assignedTo || 'Unassigned',
+          date: i.created_at || i.date,
+          location: i.location || '',
+          description: i.description || '',
+          eta: i.eta || '',
+          timeline: i.timeline || [],
+          comments: i.comments || []
+        }));
+        setRecentIssues(mapped);
+      } catch (err) {
+        console.warn('Error loading admin dashboard', err?.message || err);
+        setStats({
+          totalIssues: 0,
+          pendingIssues: 0,
+          resolvedToday: 0,
+          highPriority: 0,
+          avgResolutionTime: 0,
+          userSatisfaction: 0,
+        });
+        setRecentIssues([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {

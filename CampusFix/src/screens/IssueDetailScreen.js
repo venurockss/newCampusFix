@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const IssueDetailScreen = ({ navigation, route }) => {
   const { user } = useAuth();
@@ -95,15 +96,22 @@ const IssueDetailScreen = ({ navigation, route }) => {
       Alert.alert('Cannot Delete', 'This issue has been resolved and cannot be deleted.');
       return;
     }
-    
+
     Alert.alert(
       'Delete Issue',
       'Are you sure you want to delete this issue? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => {
-          Alert.alert('Success', 'Issue deleted successfully!');
-          navigation.goBack();
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            const id = issue.id || issue.issue_id;
+            await api.delete(`/api/v1/issues/${encodeURIComponent(id)}`);
+            Alert.alert('Success', 'Issue deleted successfully!');
+            navigation.goBack();
+          } catch (err) {
+            console.warn('Delete issue error', err?.message || err);
+            Alert.alert('Error', 'Failed to delete issue. Please try again.');
+          }
         }},
       ]
     );
@@ -210,7 +218,7 @@ const IssueDetailScreen = ({ navigation, route }) => {
         {/* Timeline */}
         <View style={styles.timelineSection}>
           <Text style={styles.sectionTitle}>Timeline</Text>
-          {issue.timeline.map((item, index) => (
+          {(issue.timeline || []).map((item, index) => (
             <View key={index} style={styles.timelineItem}>
               <View style={[
                 styles.timelineDot,
@@ -227,7 +235,7 @@ const IssueDetailScreen = ({ navigation, route }) => {
         {/* Comments Section */}
         <View style={styles.commentsSection}>
           <Text style={styles.sectionTitle}>Comments</Text>
-          {issue.comments.map((comment, index) => (
+          {(issue.comments || []).map((comment, index) => (
             <View key={index} style={styles.commentItem}>
               <View style={styles.commentHeader}>
                 <Text style={styles.commentUser}>{comment.user}</Text>

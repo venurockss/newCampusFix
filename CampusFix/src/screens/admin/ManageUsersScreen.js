@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../context/ThemeContext';
+import api from '../../api/client';
 
 const ManageUsersScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -20,61 +21,34 @@ const ManageUsersScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [users, setUsers] = useState([]);
 
-  // Mock data for users
-  const mockUsers = [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john.doe@campus.edu',
-      role: 'Student',
-      status: 'Active',
-      department: 'Computer Science',
-      avatar: '👨‍🎓',
-      issuesReported: 5,
-      issuesResolved: 3,
-    },
-    {
-      id: '2',
-      name: 'Sarah Smith',
-      email: 'sarah.smith@campus.edu',
-      role: 'Faculty',
-      status: 'Active',
-      department: 'Engineering',
-      avatar: '👩‍🏫',
-      issuesReported: 8,
-      issuesResolved: 6,
-    },
-    {
-      id: '3',
-      name: 'Mike Wilson',
-      email: 'mike.wilson@campus.edu',
-      role: 'Technician',
-      status: 'Active',
-      department: 'IT Services',
-      avatar: '👨‍💻',
-      issuesReported: 0,
-      issuesResolved: 45,
-      rating: 4.8,
-    },
-    {
-      id: '4',
-      name: 'Dr. Johnson',
-      email: 'dr.johnson@campus.edu',
-      role: 'Faculty',
-      status: 'Active',
-      department: 'Chemistry',
-      avatar: '👨‍🔬',
-      issuesReported: 12,
-      issuesResolved: 8,
-    },
-  ];
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = () => {
-    setUsers(mockUsers);
+    (async () => {
+      try {
+        const res = await api.get('/api/v1/admin/users?limit=100');
+        const data = res.data || [];
+        const mapped = data.map(u => ({
+          id: u.user_id || u.id,
+          name: u.full_name || u.name || u.email,
+          email: u.email,
+          role: (u.role || '').charAt(0).toUpperCase() + (u.role || '').slice(1),
+          status: 'Active',
+          department: u.department || '',
+          avatar: '👤',
+          issuesReported: u.issuesReported || 0,
+          issuesResolved: u.issuesResolved || 0,
+          rating: u.rating || 0,
+        }));
+        setUsers(mapped);
+      } catch (err) {
+        console.warn('Error loading users', err?.message || err);
+        setUsers([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {

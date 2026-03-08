@@ -10,12 +10,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import api from '../../api/client';
 
 const AnalyticsScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [analyticsData, setAnalyticsData] = useState({});
+  const { colors } = useTheme();
 
   const userData = user || {
     name: 'Admin',
@@ -23,61 +26,23 @@ const AnalyticsScreen = ({ navigation }) => {
     role: 'admin',
   };
 
-  // Mock analytics data
-  const mockAnalyticsData = {
-    totalIssues: 156,
-    resolvedIssues: 142,
-    pendingIssues: 14,
-    avgResolutionTime: 2.4,
-    userSatisfaction: 4.2,
-    issuesByCategory: {
-      'Facility': 45,
-      'Technology': 38,
-      'Security': 25,
-      'Maintenance': 20,
-      'Safety': 18,
-      'Other': 10,
-    },
-    issuesByLocation: {
-      'Library': 25,
-      'Computer Lab': 20,
-      'Lecture Hall': 18,
-      'Science Building': 15,
-      'Administration': 12,
-      'Other': 66,
-    },
-    resolutionTimeByCategory: {
-      'Facility': 1.8,
-      'Technology': 3.2,
-      'Security': 2.1,
-      'Maintenance': 1.5,
-      'Safety': 2.8,
-      'Other': 2.0,
-    },
-    monthlyTrends: [
-      { month: 'Jan', issues: 45, resolved: 42 },
-      { month: 'Feb', issues: 38, resolved: 35 },
-      { month: 'Mar', issues: 52, resolved: 48 },
-      { month: 'Apr', issues: 41, resolved: 39 },
-      { month: 'May', issues: 47, resolved: 44 },
-      { month: 'Jun', issues: 43, resolved: 40 },
-    ],
-    topIssues: [
-      { title: 'WiFi Connection Issues', count: 15, avgTime: 2.1 },
-      { title: 'Broken Chairs', count: 12, avgTime: 1.5 },
-      { title: 'Projector Problems', count: 10, avgTime: 2.8 },
-      { title: 'Water Leaks', count: 8, avgTime: 3.2 },
-      { title: 'Air Conditioning', count: 7, avgTime: 2.5 },
-    ],
-  };
+  // Analytics data will be loaded from backend
 
   useEffect(() => {
     loadAnalyticsData();
   }, []);
 
   const loadAnalyticsData = () => {
-    // Simulate API call
-    setAnalyticsData(mockAnalyticsData);
+    (async () => {
+      try {
+        const res = await api.get('/api/v1/analytics/dashboard');
+        const data = res.data || {};
+        setAnalyticsData(data);
+      } catch (err) {
+        console.warn('Error loading analytics data', err?.message || err);
+        setAnalyticsData({});
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -86,6 +51,14 @@ const AnalyticsScreen = ({ navigation }) => {
     loadAnalyticsData();
     setRefreshing(false);
   };
+
+  // derived safe metrics
+  const totalIssues = Number(analyticsData.totalIssues) || 0;
+  const resolvedIssues = Number(analyticsData.resolvedIssues) || 0;
+  const pendingIssues = Number(analyticsData.pendingIssues) || 0;
+  const avgResolutionTime = analyticsData.avgResolutionTime || 0;
+  const userSatisfaction = analyticsData.userSatisfaction || 0;
+  const resolutionRatePercent = totalIssues > 0 ? Math.round((resolvedIssues / totalIssues) * 100) : 0;
 
   const handleExportData = () => {
     Alert.alert(
@@ -109,36 +82,54 @@ const AnalyticsScreen = ({ navigation }) => {
     Alert.alert('Period Changed', `Analytics data updated for ${period} period.`);
   };
 
-  const renderMetricCard = (title, value, subtitle, color = '#4CAF50') => (
-    <View style={styles.metricCard}>
-      <Text style={[styles.metricValue, { color }]}>{value}</Text>
-      <Text style={styles.metricTitle}>{title}</Text>
-      {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
-    </View>
-  );
+  const renderMetricCard = (title, value, subtitle, color = colors.primary) => {
+    // get numeric percent if value is like '85%'
+    let percent = null;
+    if (typeof value === 'string' && value.trim().endsWith('%')) {
+      percent = Number(value.trim().replace('%', '')) || null;
+    }
 
-  const renderChartBar = (label, value, maxValue, color = '#4CAF50') => (
-    <View style={styles.chartBarContainer}>
-      <View style={styles.chartBarHeader}>
-        <Text style={styles.chartBarLabel}>{label}</Text>
-        <Text style={styles.chartBarValue}>{value}</Text>
+    return (
+      <View style={[styles.metricCard, { backgroundColor: colors.surface }]}> 
+        <Text style={[styles.metricValue, { color }]}>{value ?? '—'}</Text>
+        <Text style={[styles.metricTitle, { color: colors.text }]}>{title}</Text>
+        {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
+        {percent !== null && (
+          <View style={styles.metricProgressBarBackground}>
+            <View style={[styles.metricProgressBarFill, { width: `${percent}%`, backgroundColor: color }]} />
+          </View>
+        )}
       </View>
-      <View style={styles.chartBarBackground}>
-        <View 
-          style={[
-            styles.chartBarFill, 
-            { 
-              width: `${(value / maxValue) * 100}%`,
-              backgroundColor: color 
-            }
-          ]} 
-        />
+    );
+  };
+
+  const renderChartBar = (label, value, maxValue, color = colors.primary) => {
+    const numeric = Number(value) || 0;
+    const denom = Number(maxValue) || 1;
+    const pct = Math.round((numeric / denom) * 100);
+    return (
+      <View key={label} style={[styles.chartBarContainer, { backgroundColor: colors.surface }]}> 
+        <View style={styles.chartBarHeader}>
+          <Text style={[styles.chartBarLabel, { color: colors.text }]}>{label}</Text>
+          <Text style={[styles.chartBarValue, { color: colors.textSecondary }]}>{value}</Text>
+        </View>
+        <View style={[styles.chartBarBackground, { backgroundColor: colors.surfaceVariant }]}>
+          <View 
+            style={[
+              styles.chartBarFill, 
+              { 
+                width: `${pct}%`,
+                backgroundColor: color 
+              }
+            ]} 
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderTopIssueItem = (issue, index) => (
-    <View style={styles.topIssueItem}>
+    <View key={`${issue.title}-${index}`} style={styles.topIssueItem}>
       <View style={styles.issueRank}>
         <Text style={styles.rankNumber}>{index + 1}</Text>
       </View>
@@ -174,54 +165,30 @@ const AnalyticsScreen = ({ navigation }) => {
       >
         {/* Period Selector */}
         <View style={styles.periodSelector}>
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'week' && styles.selectedPeriodButton,
-            ]}
-            onPress={() => handlePeriodChange('week')}
-          >
-            <Text style={styles.periodButtonText}>Week</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'month' && styles.selectedPeriodButton,
-            ]}
-            onPress={() => handlePeriodChange('month')}
-          >
-            <Text style={styles.periodButtonText}>Month</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'quarter' && styles.selectedPeriodButton,
-            ]}
-            onPress={() => handlePeriodChange('quarter')}
-          >
-            <Text style={styles.periodButtonText}>Quarter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.periodButton,
-              selectedPeriod === 'year' && styles.selectedPeriodButton,
-            ]}
-            onPress={() => handlePeriodChange('year')}
-          >
-            <Text style={styles.periodButtonText}>Year</Text>
-          </TouchableOpacity>
+          {['week','month','quarter','year'].map(p => (
+            <TouchableOpacity
+              key={p}
+              style={[
+                styles.periodButton,
+                { backgroundColor: selectedPeriod === p ? colors.primary : 'transparent' }
+              ]}
+              onPress={() => handlePeriodChange(p)}
+            >
+              <Text style={[styles.periodButtonText, { color: selectedPeriod === p ? '#fff' : colors.text }]}>{p.charAt(0).toUpperCase() + p.slice(1)}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Key Metrics */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Key Metrics</Text>
           <View style={styles.metricsGrid}>
-            {renderMetricCard('Total Issues', analyticsData.totalIssues, 'All time')}
-            {renderMetricCard('Resolved', analyticsData.resolvedIssues, 'Successfully fixed', '#4CAF50')}
-            {renderMetricCard('Pending', analyticsData.pendingIssues, 'Awaiting resolution', '#FF9800')}
-            {renderMetricCard('Avg Resolution', `${analyticsData.avgResolutionTime} days`, 'Time to fix', '#2196F3')}
-            {renderMetricCard('Satisfaction', `${analyticsData.userSatisfaction}/5`, 'User rating', '#FFC107')}
-            {renderMetricCard('Resolution Rate', `${Math.round((analyticsData.resolvedIssues / analyticsData.totalIssues) * 100)}%`, 'Success rate', '#9C27B0')}
+            {renderMetricCard('Total Issues', totalIssues, 'All time', colors.primary)}
+            {renderMetricCard('Resolved', resolvedIssues, 'Successfully fixed', '#4CAF50')}
+            {renderMetricCard('Pending', pendingIssues, 'Awaiting resolution', '#FF9800')}
+            {renderMetricCard('Avg Resolution', `${avgResolutionTime} days`, 'Time to fix', '#2196F3')}
+            {renderMetricCard('Satisfaction', `${userSatisfaction}/5`, 'User rating', '#FFC107')}
+            {renderMetricCard('Resolution Rate', `${resolutionRatePercent}%`, 'Success rate', '#9C27B0')}
           </View>
         </View>
 
@@ -229,9 +196,14 @@ const AnalyticsScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Issues by Category</Text>
           <View style={styles.chartContainer}>
-            {Object.entries(analyticsData.issuesByCategory || {}).map(([category, count]) => 
-              renderChartBar(category, count, Math.max(...Object.values(analyticsData.issuesByCategory || {})))
-            )}
+            {(() => {
+              const cat = analyticsData.issuesByCategory || {};
+              const vals = Object.values(cat).map(v => Number(v) || 0);
+              const maxVal = vals.length ? Math.max(...vals) : 1;
+              return Object.entries(cat).map(([category, count]) => 
+                renderChartBar(category, count, maxVal)
+              );
+            })()}
           </View>
         </View>
 
@@ -239,9 +211,14 @@ const AnalyticsScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Issues by Location</Text>
           <View style={styles.chartContainer}>
-            {Object.entries(analyticsData.issuesByLocation || {}).map(([location, count]) => 
-              renderChartBar(location, count, Math.max(...Object.values(analyticsData.issuesByLocation || {})), '#2196F3')
-            )}
+            {(() => {
+              const loc = analyticsData.issuesByLocation || {};
+              const vals = Object.values(loc).map(v => Number(v) || 0);
+              const maxVal = vals.length ? Math.max(...vals) : 1;
+              return Object.entries(loc).map(([location, count]) => 
+                renderChartBar(location, count, maxVal, '#2196F3')
+              );
+            })()}
           </View>
         </View>
 
@@ -249,9 +226,14 @@ const AnalyticsScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Avg Resolution Time by Category</Text>
           <View style={styles.chartContainer}>
-            {Object.entries(analyticsData.resolutionTimeByCategory || {}).map(([category, time]) => 
-              renderChartBar(category, `${time} days`, Math.max(...Object.values(analyticsData.resolutionTimeByCategory || {})), '#FF9800')
-            )}
+            {(() => {
+              const rtc = analyticsData.resolutionTimeByCategory || {};
+              const vals = Object.values(rtc).map(v => Number(v) || 0);
+              const maxVal = vals.length ? Math.max(...vals) : 1;
+              return Object.entries(rtc).map(([category, time]) => 
+                renderChartBar(category, `${time} days`, maxVal, '#FF9800')
+              );
+            })()}
           </View>
         </View>
 
@@ -387,6 +369,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 2,
+  },
+  metricProgressBarBackground: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#3a3a3a',
+    borderRadius: 4,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  metricProgressBarFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   chartContainer: {
     backgroundColor: '#2a2a2a',

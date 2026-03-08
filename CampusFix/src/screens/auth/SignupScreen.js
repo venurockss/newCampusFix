@@ -23,6 +23,7 @@ const SignupScreen = ({ navigation }) => {
     confirmPassword: '',
     studentId: '',
     department: '',
+    specialization: '',
   });
   const [selectedRole, setSelectedRole] = useState('student');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +31,7 @@ const SignupScreen = ({ navigation }) => {
   const roles = [
     { id: 'student', label: 'Student', color: '#4CAF50' },
     { id: 'faculty', label: 'Faculty', color: '#2196F3' },
+    { id: 'technician', label: 'Technician', color: '#00BCD4' },
     { id: 'admin', label: 'Admin', color: '#FF9800' },
   ];
 
@@ -188,6 +190,17 @@ const SignupScreen = ({ navigation }) => {
               placeholderTextColor="#666"
               value={formData.department}
               onChangeText={(value) => updateFormData('department', value)}
+              autoCapitalize="words"
+            />
+          )}
+
+          {selectedRole === 'technician' && (
+            <TextInput
+              style={styles.input}
+              placeholder="Specialization (e.g., Electrical, Plumbing)"
+              placeholderTextColor="#666"
+              value={formData.specialization}
+              onChangeText={(value) => updateFormData('specialization', value)}
               autoCapitalize="words"
             />
           )}

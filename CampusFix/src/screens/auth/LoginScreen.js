@@ -23,6 +23,7 @@ const LoginScreen = ({ navigation }) => {
   const roles = [
     { id: 'student', label: 'Student', color: '#4CAF50' },
     { id: 'faculty', label: 'Faculty', color: '#2196F3' },
+    { id: 'technician', label: 'Technician', color: '#00BCD4' },
     { id: 'admin', label: 'Admin', color: '#FF9800' },
   ];
 

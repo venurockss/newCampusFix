@@ -11,12 +11,15 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../api/client';
 
 const TechnicianDashboardScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('assigned');
   const [assignedIssues, setAssignedIssues] = useState([]);
+  const [reportedIssues, setReportedIssues] = useState([]);
+  const [selectedTab, setSelectedTab] = useState('assigned');
 
   const userData = user || {
     name: 'Mike Wilson',
@@ -24,57 +27,75 @@ const TechnicianDashboardScreen = ({ navigation }) => {
     role: 'technician',
   };
 
-  // Mock data for technician dashboard
-  const mockAssignedIssues = [
-    {
-      id: '1',
-      title: 'Server Room Temperature Critical',
-      category: 'Technology',
-      status: 'In Progress',
-      priority: 'Critical',
-      reportedBy: 'John Doe',
-      date: '2024-01-18 10:30',
-      location: 'IT Building - Server Room',
-      description: 'Temperature in server room is too high',
-      eta: '2024-01-19',
-      notes: 'Working on cooling system replacement',
-    },
-    {
-      id: '2',
-      title: 'Water Leak in Chemistry Lab',
-      category: 'Facility',
-      status: 'Assigned',
-      priority: 'High',
-      reportedBy: 'Dr. Johnson',
-      date: '2024-01-18 08:45',
-      location: 'Science Building - Lab 205',
-      description: 'Water leaking from ceiling in chemistry lab',
-      eta: '2024-01-20',
-      notes: 'Need to inspect ceiling and repair',
-    },
-    {
-      id: '3',
-      title: 'Broken Chair in Library',
-      category: 'Facility',
-      status: 'Resolved',
-      priority: 'Medium',
-      reportedBy: 'Sarah Smith',
-      date: '2024-01-17 14:20',
-      location: 'Library - Floor 2',
-      description: 'Chair in study area has broken leg',
-      eta: '2024-01-18',
-      notes: 'Chair replaced successfully',
-      resolutionProof: 'Chair replacement completed',
-    },
-  ];
+  // Assigned issues will be loaded from backend
 
   useEffect(() => {
     loadAssignedIssues();
+    loadReportedIssues();
   }, []);
 
   const loadAssignedIssues = () => {
-    // Simulate API call
-    setAssignedIssues(mockAssignedIssues);
+    // Fetch assignments for technician from backend
+    (async () => {
+      try {
+        const techId = user?.user_id || user?.id || user?.email || 'unknown';
+        const res = await api.get(`/api/v1/technician/assignments/${encodeURIComponent(techId)}`);
+        const assignments = res.data || [];
+
+        const humanize = (s) => {
+          if (!s) return 'Assigned';
+          const map = { in_progress: 'In Progress', resolved: 'Resolved', assigned: 'Assigned', pending: 'Pending' };
+          return map[s] || (typeof s === 'string' ? (s.charAt(0).toUpperCase() + s.slice(1)) : 'Assigned');
+        };
+
+        const mapped = assignments.map(a => ({
+          id: a.assignment_id || a.issue_id || String(Math.random()),
+          assignmentId: a.assignment_id,
+          issueId: a.issue_id,
+          title: a.title || `Issue ${a.issue_id || ''}`,
+          category: a.category || 'General',
+          status: humanize(a.status),
+          rawStatus: a.status,
+          priority: a.priority || 'Medium',
+          reportedBy: a.reporter || a.reporter_id || '',
+          date: a.assigned_at || a.created_at || '',
+          location: a.location || '',
+          description: a.description || '',
+          eta: a.eta || '',
+          notes: a.resolution_notes || ''
+        }));
+
+        setAssignedIssues(mapped);
+      } catch (err) {
+        console.warn('Error loading assignments', err?.message || err);
+        setAssignedIssues([]);
+      }
+    })();
+  };
+
+  const loadReportedIssues = () => {
+    (async () => {
+      try {
+        const techId = user?.user_id || user?.id || user?.email || 'unknown';
+        const res = await api.get(`/api/v1/issues/user/${encodeURIComponent(techId)}`);
+        const issues = res.data || [];
+        const mapped = issues.map(i => ({
+          id: i.issue_id || i.id || String(Math.random()),
+          title: i.title,
+          category: i.category || 'General',
+          status: i.status || 'unknown',
+          priority: i.priority || 'Medium',
+          date: i.created_at || i.date || '',
+          location: i.location || '',
+          description: i.description || '',
+          assignedTo: i.assigned_to || null,
+        }));
+        setReportedIssues(mapped);
+      } catch (err) {
+        console.warn('Error loading reported issues', err?.message || err);
+        setReportedIssues([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -137,8 +158,18 @@ const TechnicianDashboardScreen = ({ navigation }) => {
       `Are you sure you want to start working on "${issue.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Start', onPress: () => {
-          Alert.alert('Success', 'Work started! Issue status updated to "In Progress".');
+        { text: 'Start', onPress: async () => {
+          try {
+            const assignmentId = issue.assignmentId;
+            if (!assignmentId) throw new Error('Missing assignment id');
+            await api.put(`/api/v1/technician/assignment/${assignmentId}/update-status`, null, { params: { new_status: 'in_progress' } });
+            // update local state
+            setAssignedIssues(prev => prev.map(a => a.assignmentId === assignmentId ? { ...a, status: 'In Progress', rawStatus: 'in_progress' } : a));
+            Alert.alert('Success', 'Work started! Issue status updated to In Progress.');
+          } catch (err) {
+            console.warn('Start work failed', err?.message || err);
+            Alert.alert('Error', 'Failed to start work. Please try again.');
+          }
         }},
       ]
     );
@@ -150,8 +181,19 @@ const TechnicianDashboardScreen = ({ navigation }) => {
       `Are you sure you want to mark "${issue.title}" as resolved?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Resolve', onPress: () => {
-          Alert.alert('Success', 'Issue marked as resolved! Please add resolution notes.');
+        { text: 'Resolve', onPress: async () => {
+          try {
+            const assignmentId = issue.assignmentId;
+            if (!assignmentId) throw new Error('Missing assignment id');
+            await api.put(`/api/v1/technician/assignment/${assignmentId}/update-status`, null, { params: { new_status: 'resolved' } });
+            // optionally add a short resolution note
+            await api.post(`/api/v1/technician/assignment/${assignmentId}/add-notes`, null, { params: { notes: 'Marked resolved via app' } });
+            setAssignedIssues(prev => prev.map(a => a.assignmentId === assignmentId ? { ...a, status: 'Resolved', rawStatus: 'resolved' } : a));
+            Alert.alert('Success', 'Issue marked as resolved.');
+          } catch (err) {
+            console.warn('Mark resolved failed', err?.message || err);
+            Alert.alert('Error', 'Failed to mark resolved. Please try again.');
+          }
         }},
       ]
     );
@@ -284,6 +326,16 @@ const TechnicianDashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Tab Selector */}
+      <View style={styles.tabSelector}>
+        <TouchableOpacity style={[styles.tabButton, selectedTab === 'assigned' && styles.tabButtonActive]} onPress={() => setSelectedTab('assigned')}>
+          <Text style={[styles.tabText, selectedTab === 'assigned' && styles.tabTextActive]}>Assigned</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabButton, selectedTab === 'reported' && styles.tabButtonActive]} onPress={() => setSelectedTab('reported')}>
+          <Text style={[styles.tabText, selectedTab === 'reported' && styles.tabTextActive]}>Reported</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
@@ -306,15 +358,14 @@ const TechnicianDashboardScreen = ({ navigation }) => {
 
       {/* Filters */}
       <View style={styles.filtersContainer}>
-        {renderFilterButton('all', 'All')}
-        {renderFilterButton('assigned', 'Assigned')}
-        {renderFilterButton('in progress', 'In Progress')}
-        {renderFilterButton('resolved', 'Resolved')}
+          {renderFilterButton('all', 'All')}
+          {renderFilterButton('assigned', 'Assigned')}
+          {renderFilterButton('resolved', 'Resolved')}
       </View>
 
       {/* Issues List */}
       <FlatList
-        data={getFilteredIssues()}
+        data={selectedTab === 'assigned' ? getFilteredIssues() : reportedIssues}
         renderItem={renderIssueCard}
         keyExtractor={(item) => item.id}
         style={styles.issuesList}
@@ -397,6 +448,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 20,
     paddingBottom: 10,
+  },
+  tabSelector: {
+    flexDirection: 'row',
+    padding: 12,
+    justifyContent: 'center',
+    backgroundColor: '#2a2a2a',
+  },
+  tabButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 6,
+    backgroundColor: '#3a3a3a',
+  },
+  tabButtonActive: {
+    backgroundColor: '#2196F3',
+  },
+  tabText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  tabTextActive: {
+    fontWeight: '700',
   },
   filterButton: {
     backgroundColor: '#3a3a3a',

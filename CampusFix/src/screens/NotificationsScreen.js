@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const NotificationsScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -24,71 +25,38 @@ const NotificationsScreen = ({ navigation }) => {
     role: 'student',
   };
 
-  // Mock notifications data
-  const mockNotifications = [
-    {
-      id: '1',
-      type: 'issue_update',
-      title: 'Issue Updated',
-      message: 'Your issue "Broken Chair in Library" has been assigned to John Smith',
-      issueId: '1',
-      issueTitle: 'Broken Chair in Library',
-      timestamp: '2024-01-16 09:00',
-      isRead: false,
-      priority: 'high',
-    },
-    {
-      id: '2',
-      type: 'admin_comment',
-      title: 'New Comment',
-      message: 'Sarah Johnson commented on your issue "WiFi Connection Issues"',
-      issueId: '2',
-      issueTitle: 'WiFi Connection Issues',
-      timestamp: '2024-01-17 11:30',
-      isRead: false,
-      priority: 'medium',
-    },
-    {
-      id: '3',
-      type: 'issue_resolved',
-      title: 'Issue Resolved',
-      message: 'Your issue "Broken Chair in Library" has been resolved',
-      issueId: '1',
-      issueTitle: 'Broken Chair in Library',
-      timestamp: '2024-01-18 14:30',
-      isRead: true,
-      priority: 'high',
-    },
-    {
-      id: '4',
-      type: 'system',
-      title: 'Welcome to CampusFix',
-      message: 'Thank you for joining CampusFix! Report issues and track their progress.',
-      timestamp: '2024-01-15 10:00',
-      isRead: true,
-      priority: 'low',
-    },
-    {
-      id: '5',
-      type: 'issue_update',
-      title: 'ETA Updated',
-      message: 'Estimated resolution time for "WiFi Connection Issues" has been updated to Jan 22',
-      issueId: '2',
-      issueTitle: 'WiFi Connection Issues',
-      timestamp: '2024-01-17 15:45',
-      isRead: true,
-      priority: 'medium',
-    },
-  ];
+  // Notifications will be loaded from backend
 
   useEffect(() => {
     loadNotifications();
   }, []);
 
   const loadNotifications = () => {
-    // Simulate API call
-    setNotifications(mockNotifications);
-    setUnreadCount(mockNotifications.filter(n => !n.isRead).length);
+    (async () => {
+      try {
+        const userId = user?.user_id || user?.id || user?.email || 'unknown';
+        const res = await api.get(`/api/v1/notifications/user/${encodeURIComponent(userId)}`);
+        const notifs = res.data || [];
+        // normalize
+        const mapped = notifs.map(n => ({
+          id: n.notification_id || n.notificationId || n.id,
+          type: n.type || (n.issue_id ? 'issue_update' : 'system'),
+          title: n.title,
+          message: n.message,
+          issueId: n.issue_id,
+          issueTitle: n.issue_title || n.issueTitle,
+          timestamp: n.created_at || n.timestamp,
+          isRead: !!n.is_read,
+          priority: n.priority || 'low',
+        }));
+        setNotifications(mapped);
+        setUnreadCount(mapped.filter(n => !n.isRead).length);
+      } catch (err) {
+        console.warn('Error loading notifications', err?.message || err);
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -100,17 +68,8 @@ const NotificationsScreen = ({ navigation }) => {
 
   const markAsRead = async (notificationId) => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setNotifications(prev => 
-        prev.map(notification => 
-          notification.id === notificationId 
-            ? { ...notification, isRead: true }
-            : notification
-        )
-      );
-      
+      await api.put(`/api/v1/notifications/${encodeURIComponent(notificationId)}/mark-read`);
+      setNotifications(prev => prev.map(notification => notification.id === notificationId ? { ...notification, isRead: true } : notification));
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       Alert.alert('Error', 'Failed to mark notification as read.');
@@ -119,13 +78,10 @@ const NotificationsScreen = ({ navigation }) => {
 
   const markAllAsRead = async () => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setNotifications(prev => 
-        prev.map(notification => ({ ...notification, isRead: true }))
-      );
-      
+      // Mark each unread notification via API (backend supports single mark endpoint)
+      const unread = notifications.filter(n => !n.isRead);
+      await Promise.all(unread.map(n => api.put(`/api/v1/notifications/${encodeURIComponent(n.id)}/mark-read`).catch(() => null)));
+      setNotifications(prev => prev.map(notification => ({ ...notification, isRead: true })));
       setUnreadCount(0);
       Alert.alert('Success', 'All notifications marked as read!');
     } catch (error) {

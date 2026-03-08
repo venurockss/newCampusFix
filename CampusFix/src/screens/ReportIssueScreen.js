@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const ReportIssueScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -72,21 +73,30 @@ const ReportIssueScreen = ({ navigation }) => {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      Alert.alert(
-        'Success',
-        'Issue reported successfully! You will receive updates on the status.',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      const userId = user?.user_id || user?.id || user?.email || null;
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        category: (formData.category || 'Other').toLowerCase(),
+        priority: (formData.priority || 'Medium').toLowerCase(),
+        image_urls: []
+      };
+
+      // Send POST to backend. Backend expects user_id as query param
+      const res = await api.post('/api/v1/issues/report', payload, { params: { user_id: userId } });
+
+      if (res && (res.status === 201 || res.status === 200)) {
+        Alert.alert('Success', 'Issue reported successfully! You will receive updates on the status.', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        throw new Error('Unexpected server response');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit issue. Please try again.');
+      console.warn('Report issue error', error?.response?.data || error?.message || error);
+      const msg = error?.response?.data?.detail || error?.message || 'Failed to submit issue. Please try again.';
+      Alert.alert('Error', msg);
     } finally {
       setIsLoading(false);
     }

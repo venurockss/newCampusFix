@@ -29,7 +29,9 @@ export const AuthProvider = ({ children }) => {
       
       if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        const normalized = normalizeUser(parsed);
+        setUser(normalized);
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
@@ -38,47 +40,96 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password, role) => {
-    try {
-      // Try real API login first
-      try {
-        const form = new URLSearchParams();
-        form.append('username', email);
-        form.append('password', password);
-        const res = await api.post('/api/auth/login', form, {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        });
-        // Support different backend response shapes
-        const tokenValue = res.data?.access_token || res.data?.token || res.data?.jwt || res.data?.tokenValue;
-        const userData = res.data?.user || res.data?.userData || { email, role, name: email.split('@')[0] };
-        if (tokenValue) {
-          await AsyncStorage.setItem('authToken', tokenValue);
-          await AsyncStorage.setItem('userData', JSON.stringify(userData));
-          setToken(tokenValue);
-          setUser(userData);
-          return { success: true, user: userData };
-        }
-        // If server responded but without token, fallthrough to fallback
-        console.warn('Login response did not include a token, falling back to local auth');
-      } catch (err) {
-        console.warn('API login failed, falling back to local auth:', err?.message || err);
-      }
-
-      // Fallback/local auth (offline-friendly). This allows the frontend to function
-      // without a backend during development. It creates a fake token and user object.
-      const fallbackToken = `local-token-${Date.now()}`;
-      const fallbackUser = { email, role: role === 'faculty' ? 'technician' : role, name: email.split('@')[0] };
-      await AsyncStorage.setItem('authToken', fallbackToken);
-      await AsyncStorage.setItem('userData', JSON.stringify(fallbackUser));
-      setToken(fallbackToken);
-      setUser(fallbackUser);
-      return { success: true, user: fallbackUser, fallback: true };
-    } catch (error) {
-      console.error('Login error:', error?.response?.data || error.message);
-      return { success: false, error: 'Login failed' };
-    }
+  const normalizeUser = (u) => {
+    if (!u) return u;
+    const normalized = { ...u };
+    // prefer name, fall back to full_name
+    if (!normalized.name && normalized.full_name) normalized.name = normalized.full_name;
+    if (!normalized.name && normalized.displayName) normalized.name = normalized.displayName;
+    // ensure user_id exists
+    if (!normalized.user_id && normalized.uid) normalized.user_id = normalized.uid;
+    if (!normalized.user_id && normalized.id) normalized.user_id = normalized.id;
+    return normalized;
   };
 
+  // const login = async (email, password, role) => {
+  //   try {
+  //     // Try real API login first
+  //     try {
+  //       const form = new URLSearchParams();
+  //       form.append('username', email);
+  //       form.append('password', password);
+  //       const res = await api.post('/api/v1/auth/login', form, {
+  //         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  //       });
+  //       // Support different backend response shapes
+  //       const tokenValue = res.data?.access_token || res.data?.token || res.data?.jwt || res.data?.tokenValue;
+  //       const userData = res.data?.user || res.data?.userData || { email, role, name: email.split('@')[0] };
+  //       if (tokenValue) {
+  //         await AsyncStorage.setItem('authToken', tokenValue);
+  //         await AsyncStorage.setItem('userData', JSON.stringify(userData));
+  //         setToken(tokenValue);
+  //         setUser(userData);
+  //         return { success: true, user: userData };
+  //       }
+  //       // If server responded but without token, fallthrough to fallback
+  //       console.warn('Login response did not include a token, falling back to local auth');
+  //     } catch (err) {
+  //       console.warn('API login failed, falling back to local auth:', err?.message || err);
+  //     }
+
+  //     // Fallback/local auth (offline-friendly). This allows the frontend to function
+  //     // without a backend during development. It creates a fake token and user object.
+  //     const fallbackToken = `local-token-${Date.now()}`;
+  //     const fallbackUser = { email, role: role === 'faculty' ? 'technician' : role, name: email.split('@')[0] };
+  //     await AsyncStorage.setItem('authToken', fallbackToken);
+  //     await AsyncStorage.setItem('userData', JSON.stringify(fallbackUser));
+  //     setToken(fallbackToken);
+  //     setUser(fallbackUser);
+  //     return { success: true, user: fallbackUser, fallback: true };
+  //   } catch (error) {
+  //     console.error('Login error:', error?.response?.data || error.message);
+  //     return { success: false, error: 'Login failed' };
+  //   }
+  // };
+   
+  const login = async (email, password) => {
+  try {
+    // Send correct JSON payload
+    const res = await api.post(
+      'http://192.168.1.5:8000/api/v1/auth/login',
+      { email, password }, // use field names exactly as backend expects
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    
+    // Extract token & user data
+    const tokenValue = res.data?.access_token || res.data?.token || res.data?.jwt || res.data?.tokenValue;
+    const rawUser = res.data?.user || res.data?.userData || { email, name: email.split('@')[0] };
+    const userData = normalizeUser(rawUser);
+
+    if (tokenValue) {
+      await AsyncStorage.setItem('authToken', tokenValue);
+      await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      setToken(tokenValue);
+      setUser(userData);
+      return { success: true, user: userData };
+    }
+
+    console.warn('Login response did not include a token');
+    return { success: false, error: 'No token returned from server' };
+  } catch (err) {
+    console.warn('API login failed, falling back to local auth:', err?.response?.data || err.message);
+
+    // Offline fallback
+    const fallbackToken = `local-token-${Date.now()}`;
+    const fallbackUser = normalizeUser({ email, name: email.split('@')[0] });
+    await AsyncStorage.setItem('authToken', fallbackToken);
+    await AsyncStorage.setItem('userData', JSON.stringify(fallbackUser));
+    setToken(fallbackToken);
+    setUser(fallbackUser);
+    return { success: true, user: fallbackUser, fallback: true };
+  }
+};
   const signup = async (userData, role) => {
     try {
       const payload = {
@@ -88,11 +139,12 @@ export const AuthProvider = ({ children }) => {
         role: role === 'faculty' ? 'technician' : role,
         studentId: userData.studentId || null,
         department: userData.department || null,
+        specialization: userData.specialization || null,
       };
 
       // Try signup endpoint(s). Support multiple backend path shapes.
       try {
-        const res = await api.post('/api/auth/signup', payload);
+        const res = await api.post('http://192.168.1.5:8000/api/v1/auth/signup', payload);
         const tokenValue = res?.data?.access_token || res?.data?.token || res?.data?.jwt || res?.data?.tokenValue;
         const createdUser = res?.data?.user || res?.data?.userData;
         if (tokenValue) {
@@ -110,7 +162,7 @@ export const AuthProvider = ({ children }) => {
       } catch (err) {
         console.warn('Primary signup endpoint failed, trying alternate path or falling back:', err?.message || err);
         try {
-          const res2 = await api.post('/api/auth/register', payload);
+          const res2 = await api.post('/api/v1/auth/register', payload);
           if (res2 && res2.status >= 200 && res2.status < 300) {
             return { success: true, message: 'Account created successfully!' };
           }
@@ -150,6 +202,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUser = async (newUser) => {
+    try {
+      const normalized = normalizeUser(newUser);
+      setUser(normalized);
+      await AsyncStorage.setItem('userData', JSON.stringify(normalized));
+    } catch (err) {
+      console.error('updateUser error', err);
+    }
+  };
+
   const value = {
     user,
     token,
@@ -157,6 +219,7 @@ export const AuthProvider = ({ children }) => {
     login,
     signup,
     logout,
+    updateUser,
     isAuthenticated: !!token,
   };
 

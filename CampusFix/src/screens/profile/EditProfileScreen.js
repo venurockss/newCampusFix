@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../api/client';
 import { useTheme } from '../../context/ThemeContext';
 
 const EditProfileScreen = ({ navigation }) => {
@@ -41,24 +42,27 @@ const EditProfileScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Update user data (in real app, this would be an API call)
-      const updatedUser = { ...user, ...formData };
-      
-      // For now, just show success and go back
-      Alert.alert(
-        'Success',
-        'Profile updated successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      const userId = user?.user_id || user?.userId || user?.id;
+      const payload = {
+        full_name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        student_id: formData.studentId,
+        department: formData.department,
+        year: formData.year
+      };
+
+      const res = await api.put(`/api/v1/auth/update-profile/${encodeURIComponent(userId)}`, payload);
+      const updated = res.data;
+
+      // Update local auth state if available
+      if (updateUser) updateUser(updated);
+
+      Alert.alert('Success', 'Profile updated successfully!', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
     } catch (error) {
+      console.warn('Update profile error', error?.response?.data || error?.message || error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);

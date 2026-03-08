@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../api/client';
 
 const ChangePasswordScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -26,6 +28,8 @@ const ChangePasswordScreen = ({ navigation }) => {
     new: false,
     confirm: false,
   });
+
+  const { user, logout } = useAuth();
 
   const handleChangePassword = async () => {
     // Validation
@@ -56,23 +60,30 @@ const ChangePasswordScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      const userId = user?.user_id || user?.userId || user?.id;
+      const payload = {
+        old_password: formData.currentPassword,
+        new_password: formData.newPassword
+      };
+
+      const res = await api.post(`/api/v1/auth/change-password`, payload, { params: { user_id: userId } });
+
       Alert.alert(
         'Success',
         'Password changed successfully! Please login again with your new password.',
         [
           {
             text: 'OK',
-            onPress: () => {
-              // In a real app, you would logout the user here
-              navigation.goBack();
+            onPress: async () => {
+              // logout to force re-login
+              await logout();
+              navigation.replace('LoginScreen');
             },
           },
         ]
       );
     } catch (error) {
+      console.warn('Change password error', error?.response?.data || error?.message || error);
       Alert.alert('Error', 'Failed to change password. Please try again.');
     } finally {
       setIsLoading(false);

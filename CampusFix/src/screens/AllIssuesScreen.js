@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,9 @@ import {
   TextInput,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const AllIssuesScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -27,77 +29,48 @@ const AllIssuesScreen = ({ navigation }) => {
     role: 'student',
   };
 
-  // Mock data for all issues
-  const mockIssues = [
-    {
-      id: '1',
-      title: 'Broken Chair in Library',
-      category: 'Facility',
-      status: 'Resolved',
-      priority: 'Medium',
-      date: '2024-01-15',
-      location: 'Library - Floor 2',
-      description: 'Chair in study area has broken leg',
-      assignedTo: 'John Smith',
-      eta: '2024-01-20',
-    },
-    {
-      id: '2',
-      title: 'WiFi Connection Issues',
-      category: 'Technology',
-      status: 'In Progress',
-      priority: 'High',
-      date: '2024-01-14',
-      location: 'Computer Lab - Room 101',
-      description: 'WiFi signal is very weak in the computer lab',
-      assignedTo: 'Sarah Johnson',
-      eta: '2024-01-22',
-    },
-    {
-      id: '3',
-      title: 'Water Leak in Lab',
-      category: 'Facility',
-      status: 'Pending',
-      priority: 'High',
-      date: '2024-01-13',
-      location: 'Chemistry Lab - Room 205',
-      description: 'Water leaking from ceiling in chemistry lab',
-      assignedTo: 'Mike Wilson',
-      eta: '2024-01-25',
-    },
-    {
-      id: '4',
-      title: 'Projector Not Working',
-      category: 'Technology',
-      status: 'Resolved',
-      priority: 'Medium',
-      date: '2024-01-12',
-      location: 'Lecture Hall - Room 301',
-      description: 'Projector screen is not displaying properly',
-      assignedTo: 'Tom Brown',
-      eta: '2024-01-15',
-    },
-    {
-      id: '5',
-      title: 'Air Conditioning Issue',
-      category: 'Facility',
-      status: 'Resolved',
-      priority: 'Low',
-      date: '2024-01-11',
-      location: 'Administration Building - Floor 1',
-      description: 'AC is making loud noise',
-      assignedTo: 'David Wilson',
-      eta: '2024-01-14',
-    },
-  ];
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return String(s).replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
+
+  // Issues will be loaded from backend
 
   useEffect(() => {
     loadIssues();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadIssues();
+    }, [])
+  );
+
   const loadIssues = () => {
-    // Simulate API call
-    setIssues(mockIssues);
+    (async () => {
+      try {
+        const res = await api.get('/api/v1/issues/all?limit=100');
+        const data = res.data || [];
+          const mapped = data.map(i => ({
+            id: i.issue_id || i.id,
+            title: i.title,
+            category: i.category || 'General',
+            status: formatStatus(i.status || ''),
+            priority: i.priority || 'Medium',
+            date: i.created_at || i.date,
+            location: i.location || '',
+            description: i.description || '',
+            assignedTo: i.assigned_to || i.assignedTo || '',
+            eta: i.eta || '',
+            timeline: i.timeline || [],
+            comments: i.comments || []
+          }));
+        setIssues(mapped);
+      } catch (err) {
+        console.warn('Error loading issues', err?.message || err);
+        setIssues([]);
+      }
+    })();
   };
 
   const onRefresh = async () => {
@@ -289,7 +262,6 @@ const AllIssuesScreen = ({ navigation }) => {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {renderFilterButton('all', 'All')}
           {renderFilterButton('pending', 'Pending')}
-          {renderFilterButton('in progress', 'In Progress')}
           {renderFilterButton('resolved', 'Resolved')}
         </ScrollView>
       </View>
